@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, send_file, render_template
 from flask_cors import CORS
-import pandas as pd
 import json
 import io
 import os
@@ -8,6 +7,15 @@ import sqlite3
 from datetime import datetime
 import requests
 import urllib3
+
+# Try to import pandas, but continue without it if not available
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+    print("✅ pandas available - upload/export features enabled")
+except ImportError:
+    PANDAS_AVAILABLE = False
+    print("⚠️ pandas not available - upload/export features disabled")
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -38,6 +46,10 @@ def init_db():
 
 def load_excel_to_db():
     """Auto-load students from Excel file to database"""
+    if not PANDAS_AVAILABLE:
+        print("⚠️ pandas not available - cannot load Excel file")
+        return 0
+    
     if not os.path.exists(EXCEL_FILE):
         print(f"⚠️ Warning: {EXCEL_FILE} not found. Please add your file.")
         return 0
@@ -353,7 +365,6 @@ def add_student():
         
         if not valid_ids:
             # For testing, allow adding with the provided IDs even if not valid
-            # This helps with testing the UI
             valid_ids = leetcode_ids[:3]
             print(f"⚠️ Using unverified IDs: {valid_ids}")
         
@@ -386,6 +397,9 @@ def add_student():
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """Upload students from Excel/CSV"""
+    if not PANDAS_AVAILABLE:
+        return jsonify({'error': 'Excel upload is not available. Please add students manually using the "+" button.'}), 400
+    
     file = request.files.get('file')
     
     if not file:
@@ -546,6 +560,9 @@ def batch_analytics():
 @app.route('/api/export')
 def export_data():
     """Export all student data to Excel"""
+    if not PANDAS_AVAILABLE:
+        return jsonify({'error': 'Export is not available. pandas is not installed.'}), 400
+    
     try:
         conn = sqlite3.connect(DB_PATH)
         df = pd.read_sql_query("SELECT roll, name, leetcode_ids FROM students", conn)
@@ -585,10 +602,14 @@ if __name__ == '__main__':
     # Initialize database
     init_db()
     
-    # Auto-load Excel file
+    # Auto-load Excel file (only if pandas available)
     print(f"\n📂 Checking for {EXCEL_FILE}...")
     if os.path.exists(EXCEL_FILE):
-        load_excel_to_db()
+        if PANDAS_AVAILABLE:
+            load_excel_to_db()
+        else:
+            print(f"⚠️ {EXCEL_FILE} found but pandas not available")
+            print(f"   Install pandas or add students manually through the UI")
     else:
         print(f"⚠️ {EXCEL_FILE} not found!")
         print(f"   You can add students manually through the UI")
@@ -597,4 +618,7 @@ if __name__ == '__main__':
     print("🌐 Server: http://127.0.0.1:5000")
     print("="*50 + "\n")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Use environment port for production
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
