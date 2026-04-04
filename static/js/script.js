@@ -1,6 +1,8 @@
 // Global variables
 let currentStudentData = null;
 let charts = {};
+let currentSectionData = null;
+let sectionCharts = {};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,6 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadLeaderboard();
     loadBatchAnalytics();
     updateStudentCount();
+    loadCourses();
+    loadAssignmentsFilter();
 });
 
 function setupEventListeners() {
@@ -59,11 +63,21 @@ function setupEventListeners() {
     const uploadFileBtn = document.getElementById('uploadFileBtn');
     const exportDataBtn = document.getElementById('exportDataBtn');
     const confirmUpload = document.getElementById('confirmUpload');
+    const loadSectionBtn = document.getElementById('loadSectionBtn');
+    const assignStudentBtn = document.getElementById('assignStudentBtn');
+    const viewAssignmentsBtn = document.getElementById('viewAssignmentsBtn');
+    const confirmAssignBtn = document.getElementById('confirmAssignBtn');
+    const aiAssistantBtn = document.getElementById('aiAssistantBtn');
     
     if (addStudentBtn) addStudentBtn.addEventListener('click', () => openModal('addStudentModal'));
     if (uploadFileBtn) uploadFileBtn.addEventListener('click', () => openModal('uploadModal'));
     if (exportDataBtn) exportDataBtn.addEventListener('click', () => exportData());
     if (confirmUpload) confirmUpload.addEventListener('click', () => uploadFile());
+    if (loadSectionBtn) loadSectionBtn.addEventListener('click', () => loadSectionDashboard());
+    if (assignStudentBtn) assignStudentBtn.addEventListener('click', () => openAssignModal());
+    if (viewAssignmentsBtn) viewAssignmentsBtn.addEventListener('click', () => openViewAssignmentsModal());
+    if (confirmAssignBtn) confirmAssignBtn.addEventListener('click', () => assignStudentToSection());
+    if (aiAssistantBtn) aiAssistantBtn.addEventListener('click', () => openAIChat());
     
     // Form submit
     const addStudentForm = document.getElementById('addStudentForm');
@@ -84,6 +98,12 @@ function setupEventListeners() {
     const studentSearch = document.getElementById('studentSearch');
     if (studentSearch) {
         studentSearch.addEventListener('input', () => filterStudents());
+    }
+    
+    // Assignment filter
+    const viewAssignmentsFilter = document.getElementById('viewAssignmentsFilter');
+    if (viewAssignmentsFilter) {
+        viewAssignmentsFilter.addEventListener('change', () => loadAllAssignments());
     }
     
     // Close modals
@@ -109,6 +129,11 @@ function switchView(view) {
     if (view === 'students') loadStudentsList();
     else if (view === 'leaderboard') loadLeaderboard();
     else if (view === 'analytics') loadBatchAnalytics();
+    else if (view === 'sectionDashboard' && currentSectionData) {
+        if (sectionCharts.difficulty) {
+            sectionCharts.difficulty.resize();
+        }
+    }
 }
 
 async function loadStudentData() {
@@ -168,7 +193,6 @@ function showEmptyDashboard() {
 function displayStudentDetails(data) {
     const stats = data.stats;
     
-    // Update student info card
     const studentInfoCard = document.getElementById('studentInfoCard');
     if (studentInfoCard) {
         studentInfoCard.innerHTML = `
@@ -191,7 +215,6 @@ function displayStudentDetails(data) {
         `;
     }
     
-    // Update stats circles
     const easyValue = document.getElementById('easyValue');
     const mediumValue = document.getElementById('mediumValue');
     const hardValue = document.getElementById('hardValue');
@@ -202,7 +225,6 @@ function displayStudentDetails(data) {
     if (hardValue) hardValue.textContent = stats.Hard || 0;
     if (totalValue) totalValue.textContent = stats.All || 0;
     
-    // Update weak topics
     const topicsList = document.getElementById('topicsList');
     const weakTopicsPanel = document.getElementById('weakTopicsPanel');
     
@@ -218,14 +240,12 @@ function displayStudentDetails(data) {
         }
     }
     
-    // Show stats panel, hide empty panel
     const statsPanel = document.getElementById('statsPanel');
     const emptyRightPanel = document.getElementById('emptyRightPanel');
     
     if (statsPanel) statsPanel.style.display = 'flex';
     if (emptyRightPanel) emptyRightPanel.style.display = 'none';
     
-    // Create or update chart
     if (charts.difficulty) charts.difficulty.destroy();
     
     const ctx = document.getElementById('difficultyChart');
@@ -276,6 +296,7 @@ async function loadStudentsList() {
         window.allStudents = students;
         displayStudents(students);
         updateStudentCount();
+        populateStudentSelect(students);
     } catch (error) {
         console.error('Error loading students:', error);
     }
@@ -377,6 +398,8 @@ async function loadBatchAnalytics() {
         const response = await fetch('/api/batch-analytics');
         const analytics = await response.json();
         displayBatchAnalytics(analytics);
+        await loadAIInsights();
+        await loadPerformancePredictions();
     } catch (error) {
         console.error('Error loading analytics:', error);
     }
@@ -386,18 +409,67 @@ function displayBatchAnalytics(analytics) {
     const batch = analytics['Your Batch'];
     if (!batch) return;
     
-    // Stats cards
-    const analyticsStats = document.getElementById('analyticsStats');
-    if (analyticsStats) {
-        analyticsStats.innerHTML = `
-            <div class="analytics-card"><h3>${batch.count}</h3><p>Total Students</p></div>
-            <div class="analytics-card"><h3>${batch.total_all}</h3><p>Problems Solved</p></div>
-            <div class="analytics-card"><h3>${Math.round(batch.avg_total)}</h3><p>Avg per Student</p></div>
-            <div class="analytics-card"><h3>${escapeHtml(batch.top_performer)}</h3><p>Top Performer</p></div>
-        `;
+    // Hero stats
+    const totalStudentsHero = document.getElementById('totalStudentsHero');
+    const totalProblemsHero = document.getElementById('totalProblemsHero');
+    const avgProblemsHero = document.getElementById('avgProblemsHero');
+    
+    if (totalStudentsHero) totalStudentsHero.textContent = batch.count;
+    if (totalProblemsHero) totalProblemsHero.textContent = batch.total_all;
+    if (avgProblemsHero) avgProblemsHero.textContent = Math.round(batch.avg_total);
+    
+    // Difficulty counts
+    const totalEasyCount = document.getElementById('totalEasyCount');
+    const totalMediumCount = document.getElementById('totalMediumCount');
+    const totalHardCount = document.getElementById('totalHardCount');
+    
+    if (totalEasyCount) totalEasyCount.textContent = batch.total_easy;
+    if (totalMediumCount) totalMediumCount.textContent = batch.total_medium;
+    if (totalHardCount) totalHardCount.textContent = batch.total_hard;
+    
+    // Progress bars
+    const totalAll = batch.total_easy + batch.total_medium + batch.total_hard;
+    const easyProgressFill = document.getElementById('easyProgressFill');
+    const mediumProgressFill = document.getElementById('mediumProgressFill');
+    const hardProgressFill = document.getElementById('hardProgressFill');
+    
+    if (easyProgressFill) easyProgressFill.style.width = totalAll > 0 ? (batch.total_easy / totalAll * 100) + '%' : '0%';
+    if (mediumProgressFill) mediumProgressFill.style.width = totalAll > 0 ? (batch.total_medium / totalAll * 100) + '%' : '0%';
+    if (hardProgressFill) hardProgressFill.style.width = totalAll > 0 ? (batch.total_hard / totalAll * 100) + '%' : '0%';
+    
+    // Stat cards
+    const statEasy = document.getElementById('statEasy');
+    const statMedium = document.getElementById('statMedium');
+    const statHard = document.getElementById('statHard');
+    const statRatio = document.getElementById('statRatio');
+    
+    if (statEasy) statEasy.textContent = batch.total_easy;
+    if (statMedium) statMedium.textContent = batch.total_medium;
+    if (statHard) statHard.textContent = batch.total_hard;
+    if (statRatio) statRatio.textContent = `${batch.total_easy}:${batch.total_medium}:${batch.total_hard}`;
+    
+    // Charts
+    const doughnutCtx = document.getElementById('batchDoughnutChart');
+    if (doughnutCtx) {
+        if (charts.batchDoughnut) charts.batchDoughnut.destroy();
+        charts.batchDoughnut = new Chart(doughnutCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Easy', 'Medium', 'Hard'],
+                datasets: [{
+                    data: [batch.total_easy, batch.total_medium, batch.total_hard],
+                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { position: 'bottom', labels: { color: '#f1f5f9' } } }
+            }
+        });
     }
     
-    // Bar chart
     const barCtx = document.getElementById('batchBarChart');
     if (barCtx) {
         if (charts.batchBar) charts.batchBar.destroy();
@@ -424,38 +496,17 @@ function displayBatchAnalytics(analytics) {
         });
     }
     
-    // Doughnut chart
-    const doughnutCtx = document.getElementById('batchDoughnutChart');
-    if (doughnutCtx) {
-        if (charts.batchDoughnut) charts.batchDoughnut.destroy();
-        charts.batchDoughnut = new Chart(doughnutCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Easy', 'Medium', 'Hard'],
-                datasets: [{
-                    data: [batch.total_easy, batch.total_medium, batch.total_hard],
-                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: { legend: { position: 'bottom', labels: { color: '#f1f5f9' } } }
-            }
-        });
-    }
-    
     // Top performers
-    const topPerformers = document.getElementById('topPerformers');
-    if (topPerformers) {
-        const top3 = batch.students.slice(0, 3);
-        topPerformers.innerHTML = `
-            <h3><i class="fas fa-crown"></i> Top Performers</h3>
-            <div class="performer-list">
-                ${top3.map((s, i) => `<div class="performer"><span class="rank">${i + 1}</span> ${escapeHtml(s)}</div>`).join('')}
+    const topPerformersList = document.getElementById('topPerformersList');
+    if (topPerformersList && batch.students) {
+        topPerformersList.innerHTML = batch.students.slice(0, 5).map((student, i) => `
+            <div class="performer-item">
+                <div class="performer-rank rank-${i+1}">${i+1}</div>
+                <div class="performer-info">
+                    <div class="performer-name">${escapeHtml(student)}</div>
+                </div>
             </div>
-        `;
+        `).join('');
     }
 }
 
@@ -484,7 +535,6 @@ async function addStudent() {
         return;
     }
     
-    // Parse LeetCode IDs
     const leetcodeIds = leetcodeIdsStr.split(',').map(id => id.trim()).filter(id => id);
     
     if (leetcodeIds.length === 0) {
@@ -497,14 +547,8 @@ async function addStudent() {
     try {
         const response = await fetch('/api/student', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-                roll: roll, 
-                name: name, 
-                leetcode_ids: leetcodeIds 
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roll: roll, name: name, leetcode_ids: leetcodeIds })
         });
         
         const data = await response.json();
@@ -512,19 +556,14 @@ async function addStudent() {
         if (response.ok) {
             showToast(data.message || 'Student added successfully!', 'success');
             closeModal();
-            
-            // Reset form
             document.getElementById('addStudentForm')?.reset();
             
-            // Refresh all data in background (without switching views)
             Promise.all([
                 loadStudentsList(),
                 loadLeaderboard(),
                 loadBatchAnalytics(),
                 updateStudentCount()
-            ]).then(() => {
-                console.log('All data refreshed after adding student');
-            }).catch(error => {
+            ]).catch(error => {
                 console.error('Error refreshing data:', error);
             });
             
@@ -631,4 +670,560 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// ===============================
+// COURSE & SECTION DASHBOARD
+// ===============================
+
+async function loadCourses() {
+    try {
+        const response = await fetch('/api/courses');
+        const courses = await response.json();
+        
+        const courseSelect = document.getElementById('courseSelect');
+        const assignCourseSelect = document.getElementById('assignCourseSelect');
+        
+        if (courseSelect) {
+            courseSelect.innerHTML = '<option value="">Select Course</option>';
+            courses.forEach(course => {
+                const option = document.createElement('option');
+                option.value = course.id;
+                option.textContent = `${course.name} (${course.code})`;
+                courseSelect.appendChild(option);
+            });
+            
+            courseSelect.addEventListener('change', async () => {
+                const sectionSelect = document.getElementById('sectionSelect');
+                const loadBtn = document.getElementById('loadSectionBtn');
+                
+                if (!courseSelect.value) {
+                    sectionSelect.innerHTML = '<option value="">Select Section</option>';
+                    sectionSelect.disabled = true;
+                    loadBtn.disabled = true;
+                    return;
+                }
+                
+                loadBtn.disabled = true;
+                sectionSelect.disabled = true;
+                sectionSelect.innerHTML = '<option value="">Loading...</option>';
+                
+                try {
+                    const sectionsResponse = await fetch(`/api/courses/${courseSelect.value}/sections`);
+                    const sections = await sectionsResponse.json();
+                    
+                    sectionSelect.innerHTML = '<option value="">Select Section</option>';
+                    sections.forEach(section => {
+                        const option = document.createElement('option');
+                        option.value = section.id;
+                        option.textContent = `${section.name} (${section.code || 'No code'})`;
+                        sectionSelect.appendChild(option);
+                    });
+                    
+                    sectionSelect.disabled = false;
+                    
+                    sectionSelect.addEventListener('change', () => {
+                        loadBtn.disabled = !sectionSelect.value;
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading sections:', error);
+                    sectionSelect.innerHTML = '<option value="">Error loading sections</option>';
+                }
+            });
+        }
+        
+        if (assignCourseSelect) {
+            assignCourseSelect.innerHTML = '<option value="">Select Course</option>';
+            courses.forEach(course => {
+                const option = document.createElement('option');
+                option.value = course.id;
+                option.textContent = `${course.name} (${course.code})`;
+                assignCourseSelect.appendChild(option);
+            });
+            
+            assignCourseSelect.addEventListener('change', async () => {
+                const assignSectionSelect = document.getElementById('assignSectionSelect');
+                
+                if (!assignCourseSelect.value) {
+                    assignSectionSelect.innerHTML = '<option value="">First select a course</option>';
+                    assignSectionSelect.disabled = true;
+                    return;
+                }
+                
+                assignSectionSelect.disabled = true;
+                assignSectionSelect.innerHTML = '<option value="">Loading sections...</option>';
+                
+                try {
+                    const sectionsResponse = await fetch(`/api/courses/${assignCourseSelect.value}/sections`);
+                    const sections = await sectionsResponse.json();
+                    
+                    assignSectionSelect.innerHTML = '<option value="">Select Section</option>';
+                    sections.forEach(section => {
+                        const option = document.createElement('option');
+                        option.value = section.id;
+                        option.textContent = `${section.name} (${section.code || 'No code'})`;
+                        assignSectionSelect.appendChild(option);
+                    });
+                    
+                    assignSectionSelect.disabled = false;
+                    
+                } catch (error) {
+                    console.error('Error loading sections:', error);
+                    assignSectionSelect.innerHTML = '<option value="">Error loading sections</option>';
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error loading courses:', error);
+    }
+}
+
+async function loadSectionDashboard() {
+    const sectionSelect = document.getElementById('sectionSelect');
+    const sectionId = sectionSelect?.value;
+    
+    if (!sectionId) {
+        showToast('Please select a section first', 'warning');
+        return;
+    }
+    
+    showLoading();
+    
+    try {
+        const response = await fetch(`/api/section/${sectionId}/dashboard`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to load section dashboard');
+        }
+        
+        const data = await response.json();
+        currentSectionData = data;
+        displaySectionDashboard(data);
+        
+        switchView('sectionDashboard');
+        
+        showToast(`Loaded ${data.section.course_name} - ${data.section.name}`, 'success');
+        
+    } catch (error) {
+        console.error('Error loading section dashboard:', error);
+        showToast('Error loading section dashboard', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+function displaySectionDashboard(data) {
+    const section = data.section;
+    const stats = data.stats;
+    
+    const sectionTitle = document.getElementById('sectionTitle');
+    if (sectionTitle) {
+        sectionTitle.textContent = `${section.course_name} - ${section.name}`;
+    }
+    
+    const sectionStudentCount = document.getElementById('sectionStudentCount');
+    const sectionEasyCount = document.getElementById('sectionEasyCount');
+    const sectionMediumCount = document.getElementById('sectionMediumCount');
+    const sectionHardCount = document.getElementById('sectionHardCount');
+    const sectionTotalCount = document.getElementById('sectionTotalCount');
+    
+    if (sectionStudentCount) sectionStudentCount.textContent = stats.total_students;
+    if (sectionEasyCount) sectionEasyCount.textContent = stats.total_easy;
+    if (sectionMediumCount) sectionMediumCount.textContent = stats.total_medium;
+    if (sectionHardCount) sectionHardCount.textContent = stats.total_hard;
+    if (sectionTotalCount) sectionTotalCount.textContent = stats.total_solved;
+    
+    const leaderboardContainer = document.getElementById('sectionLeaderboardTable');
+    if (leaderboardContainer && data.leaderboard) {
+        if (data.leaderboard.length === 0) {
+            leaderboardContainer.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><p>No students in this section yet. Use the "Assign Student" button to add students.</p></div>';
+        } else {
+            leaderboardContainer.innerHTML = data.leaderboard.map(student => {
+                let rankClass = student.rank === 1 ? 'rank-1' : student.rank === 2 ? 'rank-2' : student.rank === 3 ? 'rank-3' : '';
+                const total = student.stats.Easy + student.stats.Medium + student.stats.Hard;
+                return `
+                    <div class="leaderboard-item" onclick="viewStudentDetails('${student.roll}')">
+                        <div class="leaderboard-rank ${rankClass}">#${student.rank}</div>
+                        <div class="leaderboard-info">
+                            <div class="leaderboard-name">${escapeHtml(student.name)}</div>
+                            <div class="leaderboard-roll">${escapeHtml(student.roll)}</div>
+                        </div>
+                        <div class="leaderboard-scores">
+                            <span class="easy">${student.stats.Easy}</span>
+                            <span class="medium">${student.stats.Medium}</span>
+                            <span class="hard">${student.stats.Hard}</span>
+                        </div>
+                        <div class="leaderboard-total">${total}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+    
+    const summaryDiv = document.getElementById('sectionSummary');
+    if (summaryDiv) {
+        summaryDiv.innerHTML = `
+            <div class="summary-item">
+                <span class="summary-label"><i class="fas fa-chart-line"></i> Total Hard Problems</span>
+                <span class="summary-value">${stats.total_hard}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label"><i class="fas fa-chart-pie"></i> Easy:Medium:Hard Ratio</span>
+                <span class="summary-value">${stats.total_easy}:${stats.total_medium}:${stats.total_hard}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label"><i class="fas fa-crown"></i> Top Performer</span>
+                <span class="summary-value highlight">${data.leaderboard[0] ? escapeHtml(data.leaderboard[0].name) : 'N/A'}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label"><i class="fas fa-exclamation-triangle"></i> Needs Improvement</span>
+                <span class="summary-value">${data.leaderboard.filter(s => (s.stats.Easy + s.stats.Medium + s.stats.Hard) < 10).length} students</span>
+            </div>
+            <div class="progress-ring">
+                <div class="progress-ring-fill" style="width: ${stats.total_students > 0 ? (data.leaderboard.filter(s => (s.stats.Easy + s.stats.Medium + s.stats.Hard) > 20).length / stats.total_students * 100) : 0}%"></div>
+            </div>
+        `;
+    }
+    
+    const chartCtx = document.getElementById('sectionDifficultyChart');
+    if (chartCtx) {
+        if (sectionCharts.difficulty) sectionCharts.difficulty.destroy();
+        
+        sectionCharts.difficulty = new Chart(chartCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Easy', 'Medium', 'Hard'],
+                datasets: [{
+                    data: [stats.total_easy, stats.total_medium, stats.total_hard],
+                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                    borderWidth: 0,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                cutout: '60%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#f1f5f9', font: { size: 11 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : 0;
+                                return `${context.label}: ${context.parsed} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// ===============================
+// SECTION ASSIGNMENT MANAGEMENT
+// ===============================
+
+function populateStudentSelect(students) {
+    const assignStudentSelect = document.getElementById('assignStudentSelect');
+    if (!assignStudentSelect) return;
+    
+    assignStudentSelect.innerHTML = '<option value="">Select Student</option>';
+    students.forEach(student => {
+        const option = document.createElement('option');
+        option.value = student.roll;
+        option.textContent = `${student.name} (${student.roll})`;
+        assignStudentSelect.appendChild(option);
+    });
+}
+
+async function openAssignModal() {
+    if (!window.allStudents) {
+        await loadStudentsList();
+    }
+    openModal('assignSectionModal');
+}
+
+async function assignStudentToSection() {
+    const studentRoll = document.getElementById('assignStudentSelect')?.value;
+    const sectionId = document.getElementById('assignSectionSelect')?.value;
+    
+    if (!studentRoll) {
+        showToast('Please select a student', 'warning');
+        return;
+    }
+    
+    if (!sectionId) {
+        showToast('Please select a section', 'warning');
+        return;
+    }
+    
+    showLoading();
+    
+    try {
+        const response = await fetch('/api/assign-student', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_roll: studentRoll,
+                section_id: parseInt(sectionId)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast(data.message, 'success');
+            closeModal();
+            
+            document.getElementById('assignStudentSelect').value = '';
+            document.getElementById('assignCourseSelect').value = '';
+            document.getElementById('assignSectionSelect').innerHTML = '<option value="">First select a course</option>';
+            document.getElementById('assignSectionSelect').disabled = true;
+            
+            const sectionSelect = document.getElementById('sectionSelect');
+            if (sectionSelect && sectionSelect.value && document.getElementById('sectionDashboardView').classList.contains('active')) {
+                loadSectionDashboard();
+            }
+        } else {
+            showToast(data.error || 'Failed to assign student', 'error');
+        }
+    } catch (error) {
+        console.error('Error assigning student:', error);
+        showToast('Error assigning student', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadAssignmentsFilter() {
+    try {
+        const response = await fetch('/api/courses');
+        const courses = await response.json();
+        
+        const filterSelect = document.getElementById('viewAssignmentsFilter');
+        if (!filterSelect) return;
+        
+        filterSelect.innerHTML = '<option value="">All Sections</option>';
+        
+        for (const course of courses) {
+            const sectionsResponse = await fetch(`/api/courses/${course.id}/sections`);
+            const sections = await sectionsResponse.json();
+            
+            sections.forEach(section => {
+                const option = document.createElement('option');
+                option.value = section.id;
+                option.textContent = `${course.name} - ${section.name}`;
+                filterSelect.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading filter:', error);
+    }
+}
+
+async function openViewAssignmentsModal() {
+    openModal('viewAssignmentsModal');
+    await loadAllAssignments();
+}
+
+async function loadAllAssignments() {
+    const filterValue = document.getElementById('viewAssignmentsFilter')?.value;
+    const assignmentsList = document.getElementById('assignmentsList');
+    
+    if (!assignmentsList) return;
+    
+    assignmentsList.innerHTML = '<div class="empty-state">Loading assignments...</div>';
+    
+    try {
+        const response = await fetch('/api/section-assignments');
+        let assignments = await response.json();
+        
+        if (filterValue) {
+            assignments = assignments.filter(a => a.section_id === parseInt(filterValue));
+        }
+        
+        if (assignments.length === 0) {
+            assignmentsList.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><p>No students assigned to sections yet. Use the "Assign Student" button to add assignments.</p></div>';
+            return;
+        }
+        
+        assignmentsList.innerHTML = `
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Student Name</th>
+                        <th>Roll Number</th>
+                        <th>Course</th>
+                        <th>Section</th>
+                        <th>Assigned Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${assignments.map(assignment => `
+                        <tr>
+                            <td><strong>${escapeHtml(assignment.student_name)}</strong></td>
+                            <td>${escapeHtml(assignment.student_roll)}</td>
+                            <td>${escapeHtml(assignment.course_name)}</td>
+                            <td>${escapeHtml(assignment.section_name)}</td>
+                            <td>${new Date(assignment.assigned_at).toLocaleDateString()}</td>
+                            <td><button onclick="unassignStudent('${assignment.student_roll}', ${assignment.section_id})" class="icon-btn" style="background: rgba(239, 68, 68, 0.2);"><i class="fas fa-trash"></i></button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+    } catch (error) {
+        console.error('Error loading assignments:', error);
+        assignmentsList.innerHTML = '<div class="empty-state">Error loading assignments</div>';
+    }
+}
+
+async function unassignStudent(studentRoll, sectionId) {
+    if (!confirm(`Remove student ${studentRoll} from this section?`)) return;
+    
+    showLoading();
+    
+    try {
+        const response = await fetch('/api/unassign-student', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_roll: studentRoll,
+                section_id: sectionId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast(data.message, 'success');
+            await loadAllAssignments();
+            
+            const sectionSelect = document.getElementById('sectionSelect');
+            if (sectionSelect && sectionSelect.value && document.getElementById('sectionDashboardView').classList.contains('active')) {
+                loadSectionDashboard();
+            }
+        } else {
+            showToast(data.error || 'Failed to unassign student', 'error');
+        }
+    } catch (error) {
+        console.error('Error unassigning student:', error);
+        showToast('Error unassigning student', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// ===============================
+// 🤖 AI FEATURES
+// ===============================
+
+async function loadAIInsights() {
+    try {
+        const response = await fetch('/api/ai/insights');
+        const data = await response.json();
+        
+        const insightsList = document.getElementById('aiInsightsList');
+        if (insightsList && data.insights && data.insights.length > 0) {
+            insightsList.innerHTML = data.insights.map(insight => `
+                <div class="ai-insight-card ${insight.type}">
+                    <div class="insight-icon">${insight.icon}</div>
+                    <div class="insight-content">
+                        <div class="insight-title">${insight.title}</div>
+                        <div class="insight-message">${insight.message}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else if (insightsList) {
+            insightsList.innerHTML = '<div class="ai-insight-card">No insights available yet. Add more student data!</div>';
+        }
+    } catch (error) {
+        console.error('Error loading AI insights:', error);
+    }
+}
+
+async function loadPerformancePredictions() {
+    try {
+        const response = await fetch('/api/ai/predict-performance');
+        const data = await response.json();
+        
+        const aiPredictionSpan = document.getElementById('aiPrediction');
+        if (aiPredictionSpan && data.predictions && data.predictions.length > 0) {
+            const avgGrowth = data.predictions.reduce((sum, p) => sum + p.predicted_1month, 0) / data.predictions.length;
+            aiPredictionSpan.textContent = `${Math.round(avgGrowth)} problems`;
+        }
+    } catch (error) {
+        console.error('Error loading predictions:', error);
+    }
+}
+
+async function openAIChat() {
+    openModal('aiChatModal');
+    
+    const sendBtn = document.getElementById('sendChatBtn');
+    const chatInput = document.getElementById('chatInput');
+    
+    const sendMessage = async () => {
+        const query = chatInput.value.trim();
+        if (!query) return;
+        
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.innerHTML += `
+            <div class="chat-message user">
+                <i class="fas fa-user"></i>
+                <div class="message-text">${escapeHtml(query)}</div>
+            </div>
+        `;
+        chatInput.value = '';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        chatMessages.innerHTML += `
+            <div class="chat-message bot typing">
+                <i class="fas fa-robot"></i>
+                <div class="message-text">Typing...</div>
+            </div>
+        `;
+        
+        try {
+            const response = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query })
+            });
+            const data = await response.json();
+            
+            document.querySelector('.chat-message.typing')?.remove();
+            
+            chatMessages.innerHTML += `
+                <div class="chat-message bot">
+                    <i class="fas fa-robot"></i>
+                    <div class="message-text">${escapeHtml(data.response)}</div>
+                </div>
+            `;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+        } catch (error) {
+            document.querySelector('.chat-message.typing')?.remove();
+            chatMessages.innerHTML += `
+                <div class="chat-message bot error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div class="message-text">Sorry, I encountered an error. Please try again.</div>
+                </div>
+            `;
+        }
+    };
+    
+    sendBtn.onclick = sendMessage;
+    chatInput.onkeypress = (e) => {
+        if (e.key === 'Enter') sendMessage();
+    };
 }

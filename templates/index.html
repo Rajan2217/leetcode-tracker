@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LeetCode Tracker | Batch Performance Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>LeetCode Tracker | AI-Powered Batch Performance Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -35,6 +35,10 @@
                     <i class="fas fa-chart-line"></i>
                     <span>Batch Analytics</span>
                 </button>
+                <button class="nav-item" data-view="sectionDashboard">
+                    <i class="fas fa-chalkboard-user"></i>
+                    <span>Section Dashboard</span>
+                </button>
             </div>
             
             <div class="sidebar-footer">
@@ -49,12 +53,39 @@
         <div class="main-content">
             <!-- Header -->
             <div class="top-bar">
+                <div class="course-section-selector">
+                    <div class="selector-group">
+                        <i class="fas fa-graduation-cap"></i>
+                        <select id="courseSelect" class="selector-dropdown">
+                            <option value="">Select Course</option>
+                        </select>
+                    </div>
+                    <div class="selector-group">
+                        <i class="fas fa-users"></i>
+                        <select id="sectionSelect" class="selector-dropdown" disabled>
+                            <option value="">Select Section</option>
+                        </select>
+                    </div>
+                    <button id="loadSectionBtn" class="selector-btn" disabled>
+                        <i class="fas fa-chart-line"></i> Load Dashboard
+                    </button>
+                </div>
+                
                 <div class="search-area">
                     <i class="fas fa-search"></i>
                     <input type="text" id="searchRoll" placeholder="Search by Roll Number..." autocomplete="off">
                     <button id="searchBtn">Analyze</button>
                 </div>
                 <div class="action-buttons">
+                    <button id="aiAssistantBtn" class="icon-btn" title="AI Assistant">
+                        <i class="fas fa-robot"></i>
+                    </button>
+                    <button id="assignStudentBtn" class="icon-btn" title="Assign Student to Section">
+                        <i class="fas fa-user-plus"></i>
+                    </button>
+                    <button id="viewAssignmentsBtn" class="icon-btn" title="View Section Assignments">
+                        <i class="fas fa-list"></i>
+                    </button>
                     <button id="addStudentBtn" class="icon-btn" title="Add Student">
                         <i class="fas fa-user-plus"></i>
                     </button>
@@ -70,7 +101,6 @@
             <!-- DASHBOARD VIEW -->
             <div id="dashboardView" class="view active">
                 <div class="dashboard-container">
-                    <!-- Left Column - Student Search & Info -->
                     <div class="dashboard-left">
                         <div class="search-card">
                             <div class="search-label">
@@ -95,7 +125,6 @@
                         </div>
                     </div>
 
-                    <!-- Right Column - Stats & Charts -->
                     <div class="dashboard-right">
                         <div id="statsPanel" class="stats-panel" style="display: none;">
                             <div class="stats-grid-compact">
@@ -167,19 +196,219 @@
 
             <!-- BATCH ANALYTICS VIEW -->
             <div id="analyticsView" class="view">
-                <div class="analytics-dashboard">
-                    <div class="analytics-stats" id="analyticsStats"></div>
-                    <div class="analytics-charts">
-                        <div class="chart-box">
-                            <h3>Batch Performance Distribution</h3>
-                            <canvas id="batchBarChart"></canvas>
+                <div class="analytics-container">
+                    <!-- AI Insights Banner -->
+                    <div class="ai-insights-banner" id="aiInsightsBanner">
+                        <div class="ai-header">
+                            <i class="fas fa-robot"></i>
+                            <h3>AI Insights</h3>
+                            <span class="ai-badge">Powered by AI</span>
                         </div>
-                        <div class="chart-box">
-                            <h3>Difficulty Breakdown</h3>
-                            <canvas id="batchDoughnutChart"></canvas>
+                        <div id="aiInsightsList" class="ai-insights-list">
+                            <div class="loading-skeleton">Loading AI insights...</div>
                         </div>
                     </div>
-                    <div class="top-performers" id="topPerformers"></div>
+
+                    <!-- Hero Stats -->
+                    <div class="analytics-hero">
+                        <div class="hero-stats-grid">
+                            <div class="hero-stat-card">
+                                <div class="hero-stat-icon"><i class="fas fa-users"></i></div>
+                                <div class="hero-stat-info">
+                                    <span class="hero-stat-value" id="totalStudentsHero">0</span>
+                                    <span class="hero-stat-label">Total Students</span>
+                                </div>
+                            </div>
+                            <div class="hero-stat-card">
+                                <div class="hero-stat-icon"><i class="fas fa-code"></i></div>
+                                <div class="hero-stat-info">
+                                    <span class="hero-stat-value" id="totalProblemsHero">0</span>
+                                    <span class="hero-stat-label">Problems Solved</span>
+                                </div>
+                            </div>
+                            <div class="hero-stat-card">
+                                <div class="hero-stat-icon"><i class="fas fa-chart-line"></i></div>
+                                <div class="hero-stat-info">
+                                    <span class="hero-stat-value" id="avgProblemsHero">0</span>
+                                    <span class="hero-stat-label">Avg per Student</span>
+                                </div>
+                            </div>
+                            <div class="hero-stat-card">
+                                <div class="hero-stat-icon"><i class="fas fa-brain"></i></div>
+                                <div class="hero-stat-info">
+                                    <span class="hero-stat-value" id="aiPrediction">-</span>
+                                    <span class="hero-stat-label">AI Prediction</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="analytics-main-grid">
+                        <div class="analytics-card-large">
+                            <div class="card-header">
+                                <div class="header-left">
+                                    <i class="fas fa-chart-pie"></i>
+                                    <h3>Problem Difficulty Distribution</h3>
+                                </div>
+                            </div>
+                            <div class="difficulty-stats">
+                                <div class="difficulty-item easy">
+                                    <div class="difficulty-header">
+                                        <span><i class="fas fa-smile"></i> Easy</span>
+                                        <span class="difficulty-count" id="totalEasyCount">0</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill easy-fill" id="easyProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div class="difficulty-item medium">
+                                    <div class="difficulty-header">
+                                        <span><i class="fas fa-chart-line"></i> Medium</span>
+                                        <span class="difficulty-count" id="totalMediumCount">0</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill medium-fill" id="mediumProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div class="difficulty-item hard">
+                                    <div class="difficulty-header">
+                                        <span><i class="fas fa-fire"></i> Hard</span>
+                                        <span class="difficulty-count" id="totalHardCount">0</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill hard-fill" id="hardProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-card-large">
+                            <div class="card-header">
+                                <div class="header-left">
+                                    <i class="fas fa-chart-simple"></i>
+                                    <h3>Batch Summary</h3>
+                                </div>
+                            </div>
+                            <div class="analytics-stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-value" id="statEasy">0</div>
+                                    <div class="stat-label">Easy Solved</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="statMedium">0</div>
+                                    <div class="stat-label">Medium Solved</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="statHard">0</div>
+                                    <div class="stat-label">Hard Solved</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="statRatio">0:0:0</div>
+                                    <div class="stat-label">E:M:H Ratio</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="analytics-charts-row">
+                        <div class="chart-card">
+                            <h3><i class="fas fa-chart-line"></i> Difficulty Breakdown</h3>
+                            <canvas id="batchDoughnutChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3><i class="fas fa-chart-bar"></i> Performance Distribution</h3>
+                            <canvas id="batchBarChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="top-performers-card">
+                        <div class="card-header">
+                            <div class="header-left">
+                                <i class="fas fa-crown"></i>
+                                <h3>Top Performers</h3>
+                            </div>
+                        </div>
+                        <div class="performers-list" id="topPerformersList">
+                            <div class="loading-skeleton">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION DASHBOARD VIEW -->
+            <div id="sectionDashboardView" class="view">
+                <div class="section-dashboard-container">
+                    <div class="section-hero">
+                        <div class="section-title-large">
+                            <i class="fas fa-chalkboard-user"></i>
+                            <div>
+                                <h2 id="sectionTitle">Select a Course & Section</h2>
+                                <p>View section-wise performance analytics and leaderboard</p>
+                            </div>
+                        </div>
+                        <div class="section-stats-grid" id="sectionStatsGrid">
+                            <div class="section-stat-card students">
+                                <div class="section-stat-icon"><i class="fas fa-users"></i></div>
+                                <div class="section-stat-value" id="sectionStudentCount">0</div>
+                                <div class="section-stat-label">Total Students</div>
+                            </div>
+                            <div class="section-stat-card easy">
+                                <div class="section-stat-icon"><i class="fas fa-smile"></i></div>
+                                <div class="section-stat-value" id="sectionEasyCount">0</div>
+                                <div class="section-stat-label">Easy Solved</div>
+                            </div>
+                            <div class="section-stat-card medium">
+                                <div class="section-stat-icon"><i class="fas fa-chart-line"></i></div>
+                                <div class="section-stat-value" id="sectionMediumCount">0</div>
+                                <div class="section-stat-label">Medium Solved</div>
+                            </div>
+                            <div class="section-stat-card hard">
+                                <div class="section-stat-icon"><i class="fas fa-fire"></i></div>
+                                <div class="section-stat-value" id="sectionHardCount">0</div>
+                                <div class="section-stat-label">Hard Solved</div>
+                            </div>
+                            <div class="section-stat-card total">
+                                <div class="section-stat-icon"><i class="fas fa-chart-simple"></i></div>
+                                <div class="section-stat-value" id="sectionTotalCount">0</div>
+                                <div class="section-stat-label">Total Solved</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="section-content-grid">
+                        <div class="leaderboard-card">
+                            <div class="leaderboard-header">
+                                <h3><i class="fas fa-trophy"></i> Section Leaderboard</h3>
+                                <span class="leaderboard-stats">Ranked by total problems solved</span>
+                            </div>
+                            <div id="sectionLeaderboardTable" class="leaderboard-body">
+                                <div class="empty-state">
+                                    <i class="fas fa-chart-line"></i>
+                                    <p>Select a section to view performance</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="section-right-panel">
+                            <div class="chart-card-small">
+                                <div class="chart-title">
+                                    <i class="fas fa-chart-pie"></i>
+                                    <span>Difficulty Distribution</span>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="sectionDifficultyChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="summary-card">
+                                <div class="summary-header">
+                                    <h3><i class="fas fa-chart-simple"></i> Section Summary</h3>
+                                </div>
+                                <div id="sectionSummary" class="summary-items">
+                                    <div class="empty-state">Select a section to view summary</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -220,6 +449,81 @@
             <div class="modal-body">
                 <input type="file" id="uploadFile" accept=".csv,.xlsx,.xls">
                 <button id="confirmUpload" class="submit-btn">Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="assignSectionModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-graduate"></i> Assign Student to Section</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Student</label>
+                    <select id="assignStudentSelect" class="selector-dropdown" style="width: 100%;">
+                        <option value="">Loading students...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Select Course</label>
+                    <select id="assignCourseSelect" class="selector-dropdown" style="width: 100%;">
+                        <option value="">Select Course</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Select Section</label>
+                    <select id="assignSectionSelect" class="selector-dropdown" style="width: 100%;" disabled>
+                        <option value="">First select a course</option>
+                    </select>
+                </div>
+                <button id="confirmAssignBtn" class="submit-btn">
+                    <i class="fas fa-save"></i> Assign Student (Permanent)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="viewAssignmentsModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-users"></i> Section Assignments</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Filter by Section</label>
+                    <select id="viewAssignmentsFilter" class="selector-dropdown" style="width: 100%;">
+                        <option value="">All Sections</option>
+                    </select>
+                </div>
+                <div id="assignmentsList" class="assignments-list">
+                    <div class="empty-state">Loading assignments...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="aiChatModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-robot"></i> AI Assistant</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="chatMessages" class="chat-messages">
+                    <div class="chat-message bot">
+                        <i class="fas fa-robot"></i>
+                        <div class="message-text">Hello! I'm your AI assistant. Ask me about student performance, recommendations, or batch statistics!</div>
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" placeholder="Ask me anything... e.g., 'Show top performers' or 'Who needs help?'" class="chat-input">
+                    <button id="sendChatBtn" class="chat-send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
